@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 from gym import spaces
 
-from torch.distributions import MultivariateNormal, multivariate_normal
+from torch.distributions import MultivariateNormal
 from torch.optim import Adam
 from network import FeedForwardNN
 import numpy as np
