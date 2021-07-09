@@ -65,6 +65,7 @@ class singleFinger():
     def step(self, action):
         # take input from action space and do muscle movements
         # TODO: write this
+        action = action.detach().numpy()
         '''
         # this is stand-in pseudocode that will have to be changed
         for i in range(len(action)):
@@ -154,6 +155,7 @@ class singleFinger():
 
         # sample an action from the distribution and get its log probability
         action = dist.sample()
+        action = torch.tensor(np.clip(action.detach().numpy(), self.action_space.low, self.action_space.high), dtype=torch.float)
         log_prob = dist.log_prob(action)
 
         # return the action and log_prob
