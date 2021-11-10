@@ -1,0 +1,1 @@
+This is a python counterpart to the RT-bridge wrapper which uses zmq for near realtime data transfer
