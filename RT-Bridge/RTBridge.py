@@ -106,7 +106,7 @@ def rtb_receiveMsg(subsocket, setup_type) :
 	sys.stdout.flush()
 
 class BridgeSetup:
-	def __init__(self, pubPort, subIP, setup, milliTimeStep=10):
+	def __init__(self, pubPort, subIP, setup, milliTimeStep=20):
 		self.context = zmq.Context()
 		self.sub = rtb_connectsub(self.context, "tcp://"+subIP)
 		self.pub = rtb_initpub(self.context, "tcp://*:"+pubPort)
