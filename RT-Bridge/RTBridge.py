@@ -1,13 +1,8 @@
 import sys
-#import datetime
-#from datetime import timedelta
-#from datetime import timezone
-#import math
 import zmq
 import struct
 from enum import Enum
 import numpy as np
-#import ctypes
 
 class setups(Enum):
 	cat_3_2 = [3,2]
@@ -107,15 +102,6 @@ def rtb_receiveMsg(subsocket, setup_type) :
 	else:
 		raise ValueError("Incompatible setup type")
 
-	#printing
-	#print("RX Message: [1] " + str(recv_tuple[0]) + "\t[2] " + str(recv_tuple[1]) + "\t[3] " + str(recv_tuple[2]), end="\r", flush=True)
-	#count = 1
-	#statement = "RX Message: "
-	#for v in outs:
-	#	statement += "["+str(count)+"] "+ str(v) + "\t"
-	#	count += 1
-	#print(statement, end='\r', flush=True)
-
 	return outs
 	sys.stdout.flush()
 
@@ -136,7 +122,6 @@ class BridgeSetup:
 		rtb_publishMsg(self.pub, self.setup, activations)
 		for _ in range(stepInMillisec):
 			response = rtb_receiveMsg(self.sub, self.setup)
-		#print("\n"+str(response))
 		for value in response:
 			temp.append(value)
 		
