@@ -136,8 +136,8 @@ class BridgeSetup:
 		sendout = self.setup.value[0]
 		for _ in range(sendout):
 			throwaway.append(0)
-		for _ in range(230):
-			self.sendAndReceive(throwaway, stepInMillisec=20)
+		for _ in range(120):
+			self.sendAndReceive(throwaway, stepInMillisec=50)
 		print("completed Startup")
 
 
