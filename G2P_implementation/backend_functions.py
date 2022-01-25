@@ -9,6 +9,7 @@ from matplotlib import pyplot as plt
 import os
 from copy import deepcopy
 from mujoco_py.generated import const
+import math
 
 ##### Called in Main #####
 
@@ -20,7 +21,7 @@ def babbling_fcn(simulation_minutes=5, xmlpath=""):
     np.random.seed(0)
 
     #grab model from provided path
-    xmlpath_end = "/home/djtface/codiumFiles/Models/"+xmlpath+".xml"
+    xmlpath_end = "/media/tim/Chonky/Programming/VS/movingFromLaptop/Models/"+xmlpath+".xml" #/media/tim/Chonky/Programming/VS/movingFromLaptop/Models
     model = load_model_from_path(xmlpath_end)
     #define simulation using model
     sim = MjSim(model)
@@ -29,7 +30,7 @@ def babbling_fcn(simulation_minutes=5, xmlpath=""):
     #set constants
     control_vec_len = sim.data.ctrl.__len__()
     sim_time = simulation_minutes*60.0
-    dt = 0.0001
+    dt = 0.005
     run_samples = int(np.round(sim_time/dt))
     max_in = 1
     min_in = 0
@@ -50,7 +51,7 @@ def babbling_fcn(simulation_minutes=5, xmlpath=""):
     #Reset simulation state and run activations
     sim.set_state(sim_state)
     [babbling_kin, babbling_act, chassis_pos] = run_act_func(babbling_act, model_ver=0, timestep=0.005, Mj_render=False, xmlpath=xmlpath)
-
+    #import pdb; pdb.set_trace()
     #return kinematics and prior activation set
     return babbling_kin[1000:,:],babbling_act[1000:,:]
 
@@ -126,12 +127,7 @@ def learn2move_func(model, cum_kin, cum_act, reward_thresh=6, refinement=False, 
         #update model each loop
         if refinement:
             model = inv_mapping_func(cum_kin, cum_act, prior_model=model)
-        
-        if i == 1000:
-            i = 0
-            
-            print(attempt_kin)
-            print(real_attempt_kin)
+        print("Iteration #: ", i)
         i+=1
         print("best reward so far: ", best_reward_so_far)
 
@@ -146,6 +142,43 @@ def learn2move_func(model, cum_kin, cum_act, reward_thresh=6, refinement=False, 
     #return rewards
     return best_reward_so_far, all_rewards
 
+def inAirTraining_func(model, babbling_kinematics, babbling_activations, num_refinements=10, Mj_render=False, xmlpath_end=""):
+    Mj_render_last_run = False
+    model_ver = 0
+    
+    cum_kin = babbling_kinematics
+    cum_act = babbling_activations
+
+    attempt_kin = makeCircle_func(attempt_length=10, num_circles=6) #createSinCosKin_func(attempt_length=10, number_of_cycles=7)
+    estAttemptAct = estimate_act_func(model=model, desired_kin=attempt_kin)
+    
+    if (num_refinements == 0) and (Mj_render == True):
+        Mj_render_last_run = True
+    
+    [real_attempt_kin, real_attempt_act, chassis_pos] = run_act_func(estAttemptAct, model_ver = model_ver, Mj_render=Mj_render_last_run, xmlpath=xmlpath_end)
+    #error in position of each joint
+    error_0 = np.array([error_calc_func(attempt_kin[:,0], real_attempt_kin[:,0])])
+    error_1 = np.array([error_calc_func(attempt_kin[:,3], real_attempt_kin[:,3])])
+    avg_err = (error_0+error_1)/2
+
+    for ijk in range(num_refinements):
+        if (ijk+1 == num_refinements) and (Mj_render==True):
+            Mj_render_last_run = True
+        
+        print("Refinement number: ", ijk+1)
+        [cum_kin, cum_act] = concat_data_func(cum_kin, cum_act, real_attempt_kin, real_attempt_act)
+        model = inv_mapping_func(kinematics=cum_kin, activations=cum_act, prior_model=model)
+        est_attempt_act = estimate_act_func(model=model, desired_kin=attempt_kin)
+        [real_attempt_kin, real_attempt_act, chassis_pos] = run_act_func(est_attempt_act, model_ver=model_ver, Mj_render=Mj_render_last_run, xmlpath=xmlpath_end)
+        error_0 = np.append(error_0, error_calc_func(attempt_kin[:,0], real_attempt_kin[:,0]))
+        error_1 = np.append(error_1, error_calc_func(attempt_kin[:,3], real_attempt_kin[:,3]))
+        avg_err = np.append(avg_err, (error_0[-1]+error_1[-1])/2)
+
+    #idk, some plotting stuff
+
+    errors = np.concatenate([[error_0], [error_1]], axis=0)
+
+    return model, errors, cum_kin, cum_act
 
 ##### Called here layer 1 #####
 
@@ -236,9 +269,10 @@ def run_act_func(est_activations, model_ver=0, timestep=0.005, Mj_render=False, 
     '''
 
     #variable definitions
-    xmlpath_end = "/home/djtface/codiumFiles/Models/"+xmlpath+".xml"
+    xmlpath_end = "/media/tim/Chonky/Programming/VS/movingFromLaptop/Models/"+xmlpath+".xml" #/media/tim/Chonky/Programming/VS/movingFromLaptop/Models
     model = load_model_from_path(xmlpath_end)
     sim = MjSim(model)
+
     sim_state = sim.get_state()
     control_vec_len = sim.data.ctrl.__len__()
     num_task_samples = est_activations.shape[0]
@@ -326,6 +360,40 @@ def concat_data_func(cum_kin, cum_act, kin, act, throw_percentage=0.2):
     cum_kin = np.concatenate([cum_kin, kin[samples_to_throw:,:]])
     cum_act = np.concatenate([cum_act, act[samples_to_throw:,:]])
     return cum_kin, cum_act
+
+def createSinCosKin_func(attempt_length=10, number_of_cycles=7, timestep = 0.005):
+    num_attempt_samples = int(np.round(attempt_length/timestep))
+    
+    q0=np.zeros(num_attempt_samples)
+    q1=np.zeros(num_attempt_samples)
+
+    for ijk in range(num_attempt_samples):
+        q0[ijk] = (np.pi/3)*np.sin(number_of_cycles*(2*np.pi*ijk/num_attempt_samples))
+        q1[ijk] = -1*(np.pi/2)*((-1*np.cos(number_of_cycles*(2*np.pi*ijk/num_attempt_samples))+1)/2)
+
+    attempt_kin = pos2kin_func(q0, q1, timestep)
+
+    return attempt_kin
+
+def error_calc_func(input1, input2):
+    error = np.mean(np.abs(input1-input2))
+    return error
+
+def makeCircle_func(attempt_length=10, num_circles=6, timestep=0.005):
+    num_attempt_samples = int(np.round(attempt_length/timestep))
+
+    q0=np.zeros(num_attempt_samples)
+    q1=np.zeros(num_attempt_samples)
+
+    for ijk in range(num_attempt_samples):
+        q0[ijk] = (np.pi/9)*np.sin(num_circles*(2*np.pi*ijk/num_attempt_samples))
+        q1[ijk] = (-0.5*(np.cos(num_circles*(2*np.pi*ijk/num_attempt_samples))))+0.5
+    
+    print(q1)
+    attempt_kin = pos2kin_func(q0, q1, timestep)
+
+    return attempt_kin
+        
 
 ##### Called here layer 2 #####
 
