@@ -11,7 +11,7 @@ from matplotlib import pyplot as plt
 
 ###### Called in Main ######
 
-def babbling_func(listenAt, sendAt, babbling_min=3, timestep=1000):
+def babbling_func(listenAt, sendAt, babbling_min=3, timestep=1):
     np.random.seed(0)
 
     #set constants
@@ -37,7 +37,8 @@ def babbling_func(listenAt, sendAt, babbling_min=3, timestep=1000):
     #run activations
     [babbling_kin, babbling_act] = run_act_func(babbling_act, model_ver=0, timestep=timestep, listenAt=listenAt, sendAt=sendAt)
 
-    return babbling_kin[1000:,::], babbling_act[1000:,:]
+    return babbling_kin[:,:], babbling_act[:,:]
+    #return babbling_kin[1000:,:], babbling_act[1000:,:]
 
 def inv_mapping_func(kinematics, activations, early_stopping=False, **kwargs):
     #define constants
@@ -55,7 +56,7 @@ def inv_mapping_func(kinematics, activations, early_stopping=False, **kwargs):
         model=kwargs["prior_model"]
     else:
         model = MLPRegressor(
-            hidden_layer_sizes=13, activations="logistic",
+            hidden_layer_sizes=13, activation="logistic",
             verbose = True, warm_start=True,
             early_stopping=early_stopping)
 
@@ -146,21 +147,27 @@ def run_act_func(activations, listenAt, sendAt, model_ver=0, timestep=1000):
     real_attempt_act = np.zeros((num_task_samples, 3))
     
     #connect to RTB
-    sof = rtb.BridgeSetup(sendAt, listenAt, rtb.setups.hand_3_3)
-    sof.startConnection()
+    #sof = rtb.BridgeSetup(sendAt, listenAt, rtb.setups.hand_3_3)
+    #sof.startConnection()
 
     #loop through activations and keep track of excursions to calculate velocity and acceloration
     for ijk in range(num_task_samples):
         postureExcursions = []
-        np.concatenate(real_attempt_act, activations[ijk])
-        degreeSet = sof.sendAndReceive(activations[ijk], timestep)
+        real_attempt_act[ijk,:] = activations[ijk]
+
+        a = (((100+45)*np.random.uniform(0,1,1))-45)[0]
+        b =(((100+45)*np.random.uniform(0,1,1))-45)[0]
+        c=(((100+45)*np.random.uniform(0,1,1))-45)[0]
+        degreeSet = [a, b, c]
+        
+        #degreeSet = sof.sendAndReceive(activations[ijk], timestep)
         for p in range(len(degreeSet)):
-            degreeSet[p] = round(degrees2excurs(degreeSet[p], 6), 4)
-        np.concatenate(real_attempt_excurs, np.array(degreeSet))
+            degreeSet[p] = np.round(degrees2excurs(degreeSet[p], 6), 4)
+        real_attempt_excurs[ijk,:] = np.array(degreeSet)
 
     #kill connection to RTB
     zeroSet = np.zeros((1, activations.shape[1]))
-    _ = sof.sendAndReceive(zeroSet, 0.0005)
+    #_ = sof.sendAndReceive(zeroSet, 0.0005)
 	#in python this happens automatically
 
     #convert from excursions to kinematics
@@ -171,8 +178,10 @@ def run_act_func(activations, listenAt, sendAt, model_ver=0, timestep=1000):
 
 ###### Another Layer down ######
 
+#TODO: check if this will work as intended
 def excurs2kin_func(t0, t1, t2, timestep=1000):
-    return 0
+    kinematics = np.transpose(np.concatenate(([[t0], [np.gradient(t0)/timestep], [np.gradient(np.gradient(t0)/timestep)/timestep], [t1], [np.gradient(t1)/timestep], [np.gradient(np.gradient(t1)/timestep)/timestep], [t2], [np.gradient(t2)/timestep], [np.gradient(np.gradient(t2)/timestep)/timestep]]), axis=0))
+    return kinematics
 
 def degrees2excurs(degrees, diameterInMM=6):
 	return (np.pi*diameterInMM)*(degrees/360)
