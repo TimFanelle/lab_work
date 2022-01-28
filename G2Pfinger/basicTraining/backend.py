@@ -1,10 +1,10 @@
 #imports
-import rt-bridge as rtb
+import RTBridge as rtb
 import numpy as np
 from numpy import matlib
 from scipy import signal
 from sklearn.neural_network import MLPRegressor
-#from matplotlib import pyplot as plt
+from matplotlib import pyplot as plt
 #import os
 #from copy import deepcopy
 #import math
@@ -146,11 +146,23 @@ def run_act_func(activations, listenAt, sendAt, model_ver=0, timestep=1000):
     real_attempt_act = np.zeros((num_task_samples, 3))
     
     #connect to RTB
+    sof = rtb.BridgeSetup(sendAt, listenAt, rtb.setups.hand_3_3)
+    sof.startConnection()
 
     #loop through activations and keep track of excursions to calculate velocity and acceloration
+    for ijk in range(num_task_samples):
+        postureExcursions = []
+        np.concatenate(real_attempt_act, activations[ijk])
+        degreeSet = sof.sendAndReceive(activations[ijk], timestep)
+        for p in range(len(degreeSet)):
+            degreeSet[p] = round(degrees2excurs(degreeSet[p], 6), 4)
+        np.concatenate(real_attempt_excurs, np.array(degreeSet))
 
     #kill connection to RTB
-    
+    zeroSet = np.zeros((1, activations.shape[1]))
+    _ = sof.sendAndReceive(zeroSet, 0.0005)
+	#in python this happens automatically
+
     #convert from excursions to kinematics
     real_attempt_kin = excurs2kin_func(real_attempt_excurs[:,0], real_attempt_excurs[:,1], real_attempt_excurs[:,2], timestep = timestep)
 
@@ -161,3 +173,6 @@ def run_act_func(activations, listenAt, sendAt, model_ver=0, timestep=1000):
 
 def excurs2kin_func(t0, t1, t2, timestep=1000):
     return 0
+
+def degrees2excurs(degrees, diameterInMM=6):
+	return (np.pi*diameterInMM)*(degrees/360)
