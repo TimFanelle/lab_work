@@ -1,7 +1,7 @@
 #imports
 import numpy as np
 from matplotlib import pyplot as plt
-from backend import *
+from fingerG2P.backend import *
 import pickle
 from warnings import simplefilter
 
@@ -27,7 +27,10 @@ cum_kin = babbling_kin
 cum_act = babbling_act
 
 #save model
-pickle.dump([network, cum_kin, cum_act], open("C:/Users/quest/Documents/Classes/Research/liveFinger/saves/liveModel_soft_3min_test2.sav", 'wb'))
+pickle.dump([network, cum_kin, cum_act], open("/media/tim/Chonky/Programming/VS/movingFromLaptop/Mujoco_tests/results/mlp_model.sav", 'wb'))
 
 #Continue writing after confirming that training from babbling works
 
+np.random.seed(2)
+
+[model, errors, cum_kin, cum_act] = initial_learning_func(model=network, babbling_kin=cum_kin, babbling_act=cum_act, num_refinements=10)

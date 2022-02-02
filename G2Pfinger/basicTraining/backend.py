@@ -1,4 +1,5 @@
 #imports
+from Mujoco_tests.backend_functions import concat_data_func, estimate_act_func
 import RTBridge as rtb
 import numpy as np
 from numpy import matlib
@@ -8,6 +9,11 @@ from matplotlib import pyplot as plt
 #import os
 #from copy import deepcopy
 #import math
+import tensorflow as tf
+from tensorflow import keras
+import tensorflow
+from tensorflow.keras import layers
+from keras.models import load_model
 
 ###### Called in Main ######
 
@@ -68,6 +74,39 @@ def inv_mapping_func(kinematics, activations, early_stopping=False, **kwargs):
     est_act = model.predict(kinematics)
 
     return model
+
+def initial_learning_fun(listenAt, sendAt, model, babbling_kin, babbling_act, num_refinements=10, timestep=0.5):
+    model_ver = 0
+    cum_kin = babbling_kin
+    cum_act = babbling_act
+
+    attempt_kin = findKin_func(attempt_length=90, num_cycles=7, timestep=timestep)
+    estAttemptAct = estimate_act_func(model=model, desired_kin=attempt_kin)
+
+    [real_attempt_kin, real_attempt_act] = run_act_func(estAttemptAct, listenAt=listenAt, sendAt=sendAt, model_ver=model_ver, timestep=int(np.round(timestep*1000)))
+
+    error_0 = np.array([error_calc_func(attempt_kin[:,0], real_attempt_kin[:,0])])
+    error_1 = np.array([error_calc_func(attempt_kin[:,1], real_attempt_kin[:,1])])
+    error_2 = np.array([error_calc_func(attempt_kin[:,2], real_attempt_kin[:,2])])
+    error_3 = np.array([error_calc_func(attempt_kin[:,3], real_attempt_kin[:,3])])
+
+    avg_err = np.average([error_0, error_1, error_2, error_3])
+
+    for ijk in range(num_refinements):
+        print("Refinement Number: ", ijk+1)
+        [cum_kin, cum_act] = concat_data_func(cum_kin, cum_act, real_attempt_kin, real_attempt_act)
+        model = inv_mapping_func(kinematics=cum_kin, activations=cum_act, prior_model=model)
+        est_Attempt_Act = estimate_act_func(model=model, desired_kin=attempt_kin)
+        [real_attempt_kin, real_attempt_act] = run_act_func(est_Attempt_Act, listenAt=listenAt, sendAt=sendAt, model_ver=model_ver, timestep=int(np.round(timestep*1000)))
+        error_0 = np.append(error_0, error_calc_func(attempt_kin[:,0], real_attempt_kin[:,0]))
+        error_1 = np.append(error_1, error_calc_func(attempt_kin[:,1], real_attempt_kin[:,1]))
+        error_2 = np.append(error_2, error_calc_func(attempt_kin[:,2], real_attempt_kin[:,2]))
+        error_2 = np.append(error_3, error_calc_func(attempt_kin[:,3], real_attempt_kin[:,3]))
+    
+    errors = np.concatenate([[error_0], [error_1], [error_2], [error_3]], axis=0)
+
+    return model, errors, cum_kin, cum_act
+
 
 ###### One layer down #######
 
@@ -178,6 +217,36 @@ def run_act_func(activations, listenAt, sendAt, model_ver=0, timestep=1000):
 
     return real_attempt_kin, real_attempt_act
 
+def findKin_func(attempt_length=10, num_cycles=7, timestep=1):
+    num_attempt_samples = int(np.round(attempt_length/timestep))
+
+    q0 = np.zeros(num_attempt_samples)
+    q1 = np.zeros(num_attempt_samples)
+    q2 = np.zeros(num_attempt_samples)
+
+    for ijk in range(num_attempt_samples):
+        q0[ijk] = (np.pi/4) * np.sin(num_cycles*(2*np.pi*ijk/num_attempt_samples))
+        q1[ijk] = -1*(np.pi/2)*((0.5*np.cos(num_cycles*(2*np.pi*ijk/num_attempt_samples))-0.5))
+        q2[ijk] = -1*(np.pi/2)*((0.5*np.cos(num_cycles*(2*np.pi*ijk/num_attempt_samples))-0.5))
+    
+    attempt_kin = angle2endpoint(q0, q1, q2)
+
+    return attempt_kin
+
+def estimate_act_fun(model, desired_kin):
+    link = '/media/tim/Chonky/Programming/VS/movingFromLaptop/softModel/3_5cmModel_weights.h5'
+    endp2kin = keras.models.load_model(link)
+
+    updated_kin = endp2kin.predict(desired_kin)
+
+    est_act = model.predict(updated_kin)
+
+    return est_act
+
+def error_calc_func(input1, input2):
+    error = np.mean(np.abs(input1-input2))
+    return error
+
 
 ###### Another Layer down ######
 
@@ -204,3 +273,12 @@ def adjust_act_func(activations):
         else:
             adjust_act.append(adjustment*activations[i])
     return np.array(adjust_act)
+
+def angle2endpoint(q0, q1, q2, l1=3.6, l2=3.6, l3=3.6):
+    x = np.zeros(q0.shape[0])
+    y = np.zeros(q0.shape[0])
+
+    for ijk in range(q0.shape[0]):
+        x[ijk] = (l1*np.cos(q0[ijk]))+(l2*np.cos(q0[ijk]+q1[ijk]))+(l3*np.cos(q0[ijk]+q1[ijk]+q2[ijk]))
+        y[ijk] = (l1*np.cos(q0[ijk]))+(l2*np.cos(q0[ijk]+q1[ijk]))+(l3*np.cos(q0[ijk]+q1[ijk]+q2[ijk]))
+    return [x, y]
