@@ -11,7 +11,7 @@ from matplotlib import pyplot as plt
 
 ###### Called in Main ######
 
-def babbling_func(listenAt, sendAt, babbling_min=3, timestep=1):
+def babbling_func(listenAt, sendAt, babbling_min=3, timestep=0.5):
     np.random.seed(0)
 
     #set constants
@@ -25,19 +25,20 @@ def babbling_func(listenAt, sendAt, babbling_min=3, timestep=1):
 
     #generate all motor activations for babbling
     motor1_act = systemID_input_gen_func(signal_dur_in_sec=sim_time, pass_chance=pass_chance, max_in=max_in, min_in=min_in, timestep=timestep)
-    motor2_act = systemID_input_gen_func(signal_dur_in_sec=sim_time, pass_chance=pass_chance, max_in=max_in, min_in=min_in, timestep=timestep)
-    motor3_act = systemID_input_gen_func(signal_dur_in_sec=sim_time, pass_chance=pass_chance, max_in=max_in, min_in=min_in, timestep=timestep)
+    motor2_act = systemID_input_gen_func(signal_dur_in_sec=sim_time, pass_chance=pass_chance, max_in=max_in, min_in=min_in, timestep=timestep) #*0.2
+    motor3_act = systemID_input_gen_func(signal_dur_in_sec=sim_time, pass_chance=pass_chance, max_in=max_in, min_in=min_in, timestep=timestep) #*0.2
+    motor4_act = systemID_input_gen_func(signal_dur_in_sec=sim_time, pass_chance=pass_chance, max_in=max_in, min_in=min_in, timestep=timestep) #*0.2
     
     #collect activations into a single list
-    babbling_act = np.transpose(np.concatenate([[motor1_act], [motor2_act], [motor3_act]], axis=0))
+    babbling_act = np.transpose(np.concatenate([[motor1_act], [motor2_act], [motor3_act], [motor4_act]], axis=0))
 
     #show kinematics and activations
     kin_act_show_func(activations=babbling_act, timestep=timestep)
 
     #run activations
-    [babbling_kin, babbling_act] = run_act_func(babbling_act, model_ver=0, timestep=timestep, listenAt=listenAt, sendAt=sendAt)
+    [babbling_kin, babbling_act] = run_act_func(babbling_act, model_ver=0, timestep=int(np.round(timestep*1000)), listenAt=listenAt, sendAt=sendAt)
 
-    return babbling_kin[:,:], babbling_act[:,:]
+    return babbling_kin[:6,:], babbling_act[:6,:]
     #return babbling_kin[1000:,:], babbling_act[1000:,:]
 
 def inv_mapping_func(kinematics, activations, early_stopping=False, **kwargs):
@@ -143,35 +144,37 @@ def kin_act_show_func(vs_time=False, timestep=0.005, **kwargs):
 def run_act_func(activations, listenAt, sendAt, model_ver=0, timestep=1000):
     #define variables
     num_task_samples = activations.shape[0]
-    real_attempt_excurs = np.zeros((num_task_samples, 3)) #one for each tendon we are measuring the excursion of
-    real_attempt_act = np.zeros((num_task_samples, 3))
+    real_attempt_excurs = np.zeros((num_task_samples, 4)) #one for each tendon we are measuring the excursion of
+    real_attempt_act = np.zeros((num_task_samples, 4))
     
     #connect to RTB
-    #sof = rtb.BridgeSetup(sendAt, listenAt, rtb.setups.hand_3_3)
-    #sof.startConnection()
+    sof = rtb.BridgeSetup(sendAt, listenAt, rtb.setups.hand_4_4)
+    sof.startConnection()
 
     #loop through activations and keep track of excursions to calculate velocity and acceloration
     for ijk in range(num_task_samples):
         postureExcursions = []
-        real_attempt_act[ijk,:] = activations[ijk]
+        adjusted_act = adjust_act_func(activations[ijk])
+        real_attempt_act[ijk,:] = adjusted_act #activations[ijk]
 
-        a = (((100+45)*np.random.uniform(0,1,1))-45)[0]
-        b =(((100+45)*np.random.uniform(0,1,1))-45)[0]
-        c=(((100+45)*np.random.uniform(0,1,1))-45)[0]
-        degreeSet = [a, b, c]
+        #a = (((100+45)*np.random.uniform(0,1,1))-45)[0]
+        #b =(((100+45)*np.random.uniform(0,1,1))-45)[0]
+        #c=(((100+45)*np.random.uniform(0,1,1))-45)[0]
+        #degreeSet = [a, b, c]
         
-        #degreeSet = sof.sendAndReceive(activations[ijk], timestep)
+        degreeSet = sof.sendAndReceive(adjusted_act, timestep)
+        print(degreeSet)
         for p in range(len(degreeSet)):
             degreeSet[p] = np.round(degrees2excurs(degreeSet[p], 6), 4)
         real_attempt_excurs[ijk,:] = np.array(degreeSet)
 
     #kill connection to RTB
-    zeroSet = np.zeros((1, activations.shape[1]))
-    #_ = sof.sendAndReceive(zeroSet, 0.0005)
+    zeroSet = np.zeros(activations.shape[1])
+    _ = sof.sendAndReceive(zeroSet, 2)
 	#in python this happens automatically
 
     #convert from excursions to kinematics
-    real_attempt_kin = excurs2kin_func(real_attempt_excurs[:,0], real_attempt_excurs[:,1], real_attempt_excurs[:,2], timestep = timestep)
+    real_attempt_kin = excurs2kin_func(real_attempt_excurs[:,0], real_attempt_excurs[:,1], real_attempt_excurs[:,2], real_attempt_excurs[:,3], timestep = timestep)
 
     return real_attempt_kin, real_attempt_act
 
@@ -179,9 +182,25 @@ def run_act_func(activations, listenAt, sendAt, model_ver=0, timestep=1000):
 ###### Another Layer down ######
 
 #TODO: check if this will work as intended
-def excurs2kin_func(t0, t1, t2, timestep=1000):
-    kinematics = np.transpose(np.concatenate(([[t0], [np.gradient(t0)/timestep], [np.gradient(np.gradient(t0)/timestep)/timestep], [t1], [np.gradient(t1)/timestep], [np.gradient(np.gradient(t1)/timestep)/timestep], [t2], [np.gradient(t2)/timestep], [np.gradient(np.gradient(t2)/timestep)/timestep]]), axis=0))
+
+def excurs2kin_func(t0, t1, t2, t3, timestep=1000):
+    kinematics = np.transpose(np.concatenate((
+	[[t0], [np.gradient(t0)/timestep], [np.gradient(np.gradient(t0)/timestep)/timestep], 
+	[t1], [np.gradient(t1)/timestep], [np.gradient(np.gradient(t1)/timestep)/timestep], 
+	[t2], [np.gradient(t2)/timestep], [np.gradient(np.gradient(t2)/timestep)/timestep], 
+	[t3], [np.gradient(t3)/timestep], [np.gradient(np.gradient(t3)/timestep)/timestep]]), axis=0))
     return kinematics
 
 def degrees2excurs(degrees, diameterInMM=6):
 	return (np.pi*diameterInMM)*(degrees/360)
+
+def adjust_act_func(activations):
+    adjust_act = []
+    adjustment = 0.5
+    max_index = np.where(activations == max(activations))
+    for i in range(len(activations)):
+        if i == max_index:
+            adjust_act.append(activations[i])
+        else:
+            adjust_act.append(adjustment*activations[i])
+    return np.array(adjust_act)
