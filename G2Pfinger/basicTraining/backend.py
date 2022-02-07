@@ -1,5 +1,4 @@
 #imports
-from Mujoco_tests.backend_functions import concat_data_func, estimate_act_func
 import RTBridge as rtb
 import numpy as np
 from numpy import matlib
@@ -11,7 +10,6 @@ from matplotlib import pyplot as plt
 #import math
 import tensorflow as tf
 from tensorflow import keras
-import tensorflow
 from tensorflow.keras import layers
 from keras.models import load_model
 
@@ -75,38 +73,52 @@ def inv_mapping_func(kinematics, activations, early_stopping=False, **kwargs):
 
     return model
 
-def initial_learning_fun(listenAt, sendAt, model, babbling_kin, babbling_act, num_refinements=10, timestep=0.5):
+def initial_learning_func(listenAt, sendAt, model, babbling_kin, babbling_act, num_refinements=10, timestep=0.5):
     model_ver = 0
     cum_kin = babbling_kin
     cum_act = babbling_act
 
-    attempt_kin = findKin_func(attempt_length=90, num_cycles=7, timestep=timestep)
-    estAttemptAct = estimate_act_func(model=model, desired_kin=attempt_kin)
+    attempt_kin = findKin_func(attempt_length=50, num_cycles=7, timestep=timestep)
+    estAttemptAct, updated_kin = estimate_act_fun(model=model, desired_kin=attempt_kin, timestep=timestep)
 
     [real_attempt_kin, real_attempt_act] = run_act_func(estAttemptAct, listenAt=listenAt, sendAt=sendAt, model_ver=model_ver, timestep=int(np.round(timestep*1000)))
 
-    error_0 = np.array([error_calc_func(attempt_kin[:,0], real_attempt_kin[:,0])])
-    error_1 = np.array([error_calc_func(attempt_kin[:,1], real_attempt_kin[:,1])])
-    error_2 = np.array([error_calc_func(attempt_kin[:,2], real_attempt_kin[:,2])])
-    error_3 = np.array([error_calc_func(attempt_kin[:,3], real_attempt_kin[:,3])])
+    #print(updated_kin)
+    #print(real_attempt_kin)
+
+    error_0 = np.array([error_calc_func(updated_kin[:,0], real_attempt_kin[:,0])])
+    error_1 = np.array([error_calc_func(updated_kin[:,3], real_attempt_kin[:,3])])
+    error_2 = np.array([error_calc_func(updated_kin[:,6], real_attempt_kin[:,6])])
+    error_3 = np.array([error_calc_func(updated_kin[:,9], real_attempt_kin[:,9])])
 
     avg_err = np.average([error_0, error_1, error_2, error_3])
+    #print(avg_err)
 
     for ijk in range(num_refinements):
         print("Refinement Number: ", ijk+1)
         [cum_kin, cum_act] = concat_data_func(cum_kin, cum_act, real_attempt_kin, real_attempt_act)
         model = inv_mapping_func(kinematics=cum_kin, activations=cum_act, prior_model=model)
-        est_Attempt_Act = estimate_act_func(model=model, desired_kin=attempt_kin)
+        est_Attempt_Act, updated_kin = estimate_act_fun(model=model, desired_kin=attempt_kin)
         [real_attempt_kin, real_attempt_act] = run_act_func(est_Attempt_Act, listenAt=listenAt, sendAt=sendAt, model_ver=model_ver, timestep=int(np.round(timestep*1000)))
-        error_0 = np.append(error_0, error_calc_func(attempt_kin[:,0], real_attempt_kin[:,0]))
-        error_1 = np.append(error_1, error_calc_func(attempt_kin[:,1], real_attempt_kin[:,1]))
-        error_2 = np.append(error_2, error_calc_func(attempt_kin[:,2], real_attempt_kin[:,2]))
-        error_2 = np.append(error_3, error_calc_func(attempt_kin[:,3], real_attempt_kin[:,3]))
+        error_0 = np.append(error_0, error_calc_func(updated_kin[:,0], real_attempt_kin[:,0]))
+        error_1 = np.append(error_1, error_calc_func(updated_kin[:,3], real_attempt_kin[:,3]))
+        error_2 = np.append(error_2, error_calc_func(updated_kin[:,6], real_attempt_kin[:,6]))
+        error_3 = np.append(error_3, error_calc_func(updated_kin[:,9], real_attempt_kin[:,9]))
     
-    errors = np.concatenate([[error_0], [error_1], [error_2], [error_3]], axis=0)
+    #error_a = np.concatenate([[error_0], [error_1]], axis=0)
+    #error_b = np.concatenate([[error_2], [error_3]], axis=0)
+    #errors = np.concatenate(error_a, error_b, axis=0)
+    errors = np.concatenate([[error_0],[error_1],[error_2],[error_3]], axis=0)
 
     return model, errors, cum_kin, cum_act
 
+def moveCycling(model, listenAt, sendAt, timestep=0.5, attempt_length=30, num_cycles=7):
+    attempt_kin = findKin_func(attempt_length=attempt_length, num_cycles=num_cycles, timestep=timestep)
+    estAttemptAct, updated_kin = estimate_act_fun(model=model, desired_kin=attempt_kin, timestep=timestep)
+
+    [real_attempt_kin, real_attempt_act] = run_act_func(estAttemptAct, listenAt=listenAt, sendAt=sendAt, model_ver=0, timestep=int(np.round(timestep*1000)))
+
+    return real_attempt_kin, real_attempt_act
 
 ###### One layer down #######
 
@@ -202,7 +214,7 @@ def run_act_func(activations, listenAt, sendAt, model_ver=0, timestep=1000):
         #degreeSet = [a, b, c]
         
         degreeSet = sof.sendAndReceive(adjusted_act, timestep)
-        print(degreeSet)
+        #print(degreeSet)
         for p in range(len(degreeSet)):
             degreeSet[p] = np.round(degrees2excurs(degreeSet[p], 6), 4)
         real_attempt_excurs[ijk,:] = np.array(degreeSet)
@@ -233,15 +245,22 @@ def findKin_func(attempt_length=10, num_cycles=7, timestep=1):
 
     return attempt_kin
 
-def estimate_act_fun(model, desired_kin):
-    link = '/media/tim/Chonky/Programming/VS/movingFromLaptop/softModel/3_5cmModel_weights.h5'
+def estimate_act_fun(model, desired_kin, timestep=1):
+    link = 'C:/Users/quest/Documents/Classes/Research/liveFinger/softFinger/3_5cmModel_E2E.h5'
     endp2kin = keras.models.load_model(link)
 
     updated_kin = endp2kin.predict(desired_kin)
-
+    updated_kin = excurs2kin_func(updated_kin[:,0], updated_kin[:,1], updated_kin[:,2], updated_kin[:,3], timestep=timestep)
     est_act = model.predict(updated_kin)
 
-    return est_act
+    return est_act, updated_kin
+
+def concat_data_func(cum_kin, cum_act, kin, act, throw_percentage=0.2):
+    size_incoming_data = kin.shape[0]
+    samples_to_throw = int(np.round(throw_percentage*size_incoming_data))
+    cum_kin = np.concatenate([cum_kin, kin[samples_to_throw:,:]])
+    cum_act = np.concatenate([cum_act, act[samples_to_throw:,:]])
+    return cum_kin, cum_act
 
 def error_calc_func(input1, input2):
     error = np.mean(np.abs(input1-input2))
@@ -274,11 +293,10 @@ def adjust_act_func(activations):
             adjust_act.append(adjustment*activations[i])
     return np.array(adjust_act)
 
-def angle2endpoint(q0, q1, q2, l1=3.6, l2=3.6, l3=3.6):
-    x = np.zeros(q0.shape[0])
-    y = np.zeros(q0.shape[0])
+def angle2endpoint(q0, q1, q2, l1=36, l2=36, l3=36):
+    xy = np.zeros((q0.shape[0],2))
 
     for ijk in range(q0.shape[0]):
-        x[ijk] = (l1*np.cos(q0[ijk]))+(l2*np.cos(q0[ijk]+q1[ijk]))+(l3*np.cos(q0[ijk]+q1[ijk]+q2[ijk]))
-        y[ijk] = (l1*np.cos(q0[ijk]))+(l2*np.cos(q0[ijk]+q1[ijk]))+(l3*np.cos(q0[ijk]+q1[ijk]+q2[ijk]))
-    return [x, y]
+        xy[ijk][0] = (l1*np.cos(q0[ijk]))+(l2*np.cos(q0[ijk]+q1[ijk]))+(l3*np.cos(q0[ijk]+q1[ijk]+q2[ijk]))
+        xy[ijk][1] = (l1*np.cos(q0[ijk]))+(l2*np.cos(q0[ijk]+q1[ijk]))+(l3*np.cos(q0[ijk]+q1[ijk]+q2[ijk]))
+    return xy
