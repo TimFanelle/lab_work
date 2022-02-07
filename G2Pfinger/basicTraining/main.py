@@ -1,7 +1,7 @@
 #imports
 import numpy as np
 from matplotlib import pyplot as plt
-from fingerG2P.backend import *
+from backend import *
 import pickle
 from warnings import simplefilter
 
@@ -14,23 +14,39 @@ pxi2 = "169.254.22.65"
 portSend = "5557"
 portReceive = 5555
 listeningIP = pxi1 + ":" + str(portReceive)
-babbling_minutes = 0.6
+babbling_minutes = 3
 
-#gathering babbling data
-[babbling_kin, babbling_act] = babbling_func(babbling_min=babbling_minutes, listenAt=listeningIP, sendAt=portSend, timestep=0.1)
+run_babbling = 0
+training = 0
 
-#train network from babbling data
-network = inv_mapping_func(kinematics=babbling_kin, activations=babbling_act, early_stopping=False)
+if training == 1 and run_babbling == 1:
+	#gathering babbling data
+	[babbling_kin, babbling_act] = babbling_func(babbling_min=babbling_minutes, listenAt=listeningIP, sendAt=portSend, timestep=0.1)
 
-#defining cumulative variables
-cum_kin = babbling_kin
-cum_act = babbling_act
+	#train network from babbling data
+	network = inv_mapping_func(kinematics=babbling_kin, activations=babbling_act, early_stopping=False)
 
-#save model
-pickle.dump([network, cum_kin, cum_act], open("/media/tim/Chonky/Programming/VS/movingFromLaptop/Mujoco_tests/results/mlp_model.sav", 'wb'))
+	#defining cumulative variables
+	cum_kin = babbling_kin
+	cum_act = babbling_act
 
-#Continue writing after confirming that training from babbling works
+	#save model
+	pickle.dump([network, cum_kin, cum_act], open("C:/Users/quest/Documents/Classes/Research/liveFinger/saves/checkSav.sav", 'wb'))
 
-np.random.seed(2)
+	#Continue writing after confirming that training from babbling works
 
-[model, errors, cum_kin, cum_act] = initial_learning_func(model=network, babbling_kin=cum_kin, babbling_act=cum_act, num_refinements=10)
+if training == 1:
+	np.random.seed(2)
+
+	[network, errors, cum_kin, cum_act] = initial_learning_func(
+		listenAt=listeningIP, sendAt=portSend, model=network, babbling_kin=cum_kin, 
+		babbling_act=cum_act, num_refinements=13, timestep=0.1)
+
+	pickle.dump([network, cum_kin, cum_act], open("C:/Users/quest/Documents/Classes/Research/liveFinger/saves/checkSav_full.sav", 'wb'))
+
+else:
+	[network, cum_kin, cum_act] = pickle.load(open("C:/Users/quest/Documents/Classes/Research/liveFinger/saves/checkSav_full.sav", 'rb'))
+
+	_, _ = moveCycling(model=network, listenAt=listeningIP, sendAt=portSend, attempt_length=120, num_cycles=10, timestep=0.1)
+
+print("Completed")
