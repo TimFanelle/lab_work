@@ -1,0 +1,302 @@
+#imports
+import RTBridge as rtb
+import numpy as np
+from numpy import matlib
+from scipy import signal
+from sklearn.neural_network import MLPRegressor
+from matplotlib import pyplot as plt
+#import os
+#from copy import deepcopy
+#import math
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras import layers
+from keras.models import load_model
+
+###### Called in Main ######
+
+def babbling_func(listenAt, sendAt, babbling_min=3, timestep=0.5):
+    np.random.seed(0)
+
+    #set constants
+    sim_time = babbling_min*60.0
+    run_samples = int(np.round(sim_time/timestep))
+    
+    max_in = 0.9
+    min_in = 0.1
+
+    pass_chance = timestep
+
+    #generate all motor activations for babbling
+    motor1_act = systemID_input_gen_func(signal_dur_in_sec=sim_time, pass_chance=pass_chance, max_in=max_in, min_in=min_in, timestep=timestep)
+    motor2_act = systemID_input_gen_func(signal_dur_in_sec=sim_time, pass_chance=pass_chance, max_in=max_in, min_in=min_in, timestep=timestep) #*0.2
+    motor3_act = systemID_input_gen_func(signal_dur_in_sec=sim_time, pass_chance=pass_chance, max_in=max_in, min_in=min_in, timestep=timestep) #*0.2
+    motor4_act = systemID_input_gen_func(signal_dur_in_sec=sim_time, pass_chance=pass_chance, max_in=max_in, min_in=min_in, timestep=timestep) #*0.2
+    
+    #collect activations into a single list
+    babbling_act = np.transpose(np.concatenate([[motor1_act], [motor2_act], [motor3_act], [motor4_act]], axis=0))
+
+    #show kinematics and activations
+    kin_act_show_func(activations=babbling_act, timestep=timestep)
+
+    #run activations
+    [babbling_kin, babbling_act] = run_act_func(babbling_act, model_ver=0, timestep=int(np.round(timestep*1000)), listenAt=listenAt, sendAt=sendAt)
+
+    return babbling_kin[:6,:], babbling_act[:6,:]
+    #return babbling_kin[1000:,:], babbling_act[1000:,:]
+
+def inv_mapping_func(kinematics, activations, early_stopping=False, **kwargs):
+    #define constants
+    num_samples=activations.shape[0]
+    train_ratio = 1
+    kin_train = kinematics[:int(np.round(train_ratio*num_samples)),:]
+    kin_test = kinematics[int(np.round(train_ratio*num_samples))+1:,:]
+    act_train = activations[:int(np.round(train_ratio*num_samples)),:]
+    act_test = activations[int(np.round(train_ratio*num_samples))+1:,:]
+    num_samples_test = act_test.shape[0]
+
+    #set model to prior model if available, else do a regression to map kinematics to activations
+    print("training the model")
+    if("prior_model" in kwargs):
+        model=kwargs["prior_model"]
+    else:
+        model = MLPRegressor(
+            hidden_layer_sizes=13, activation="logistic",
+            verbose = True, warm_start=True,
+            early_stopping=early_stopping)
+
+    #fit model
+    model.fit(kin_train, act_train)
+
+    #test run the model
+    est_act = model.predict(kinematics)
+
+    return model
+
+def initial_learning_func(listenAt, sendAt, model, babbling_kin, babbling_act, num_refinements=10, timestep=0.5):
+    model_ver = 0
+    cum_kin = babbling_kin
+    cum_act = babbling_act
+
+    attempt_kin = findKin_func(attempt_length=50, num_cycles=7, timestep=timestep)
+    estAttemptAct, updated_kin = estimate_act_fun(model=model, desired_kin=attempt_kin, timestep=timestep)
+
+    [real_attempt_kin, real_attempt_act] = run_act_func(estAttemptAct, listenAt=listenAt, sendAt=sendAt, model_ver=model_ver, timestep=int(np.round(timestep*1000)))
+
+    #print(updated_kin)
+    #print(real_attempt_kin)
+
+    error_0 = np.array([error_calc_func(updated_kin[:,0], real_attempt_kin[:,0])])
+    error_1 = np.array([error_calc_func(updated_kin[:,3], real_attempt_kin[:,3])])
+    error_2 = np.array([error_calc_func(updated_kin[:,6], real_attempt_kin[:,6])])
+    error_3 = np.array([error_calc_func(updated_kin[:,9], real_attempt_kin[:,9])])
+
+    avg_err = np.average([error_0, error_1, error_2, error_3])
+    #print(avg_err)
+
+    for ijk in range(num_refinements):
+        print("Refinement Number: ", ijk+1)
+        [cum_kin, cum_act] = concat_data_func(cum_kin, cum_act, real_attempt_kin, real_attempt_act)
+        model = inv_mapping_func(kinematics=cum_kin, activations=cum_act, prior_model=model)
+        est_Attempt_Act, updated_kin = estimate_act_fun(model=model, desired_kin=attempt_kin)
+        [real_attempt_kin, real_attempt_act] = run_act_func(est_Attempt_Act, listenAt=listenAt, sendAt=sendAt, model_ver=model_ver, timestep=int(np.round(timestep*1000)))
+        error_0 = np.append(error_0, error_calc_func(updated_kin[:,0], real_attempt_kin[:,0]))
+        error_1 = np.append(error_1, error_calc_func(updated_kin[:,3], real_attempt_kin[:,3]))
+        error_2 = np.append(error_2, error_calc_func(updated_kin[:,6], real_attempt_kin[:,6]))
+        error_3 = np.append(error_3, error_calc_func(updated_kin[:,9], real_attempt_kin[:,9]))
+    
+    #error_a = np.concatenate([[error_0], [error_1]], axis=0)
+    #error_b = np.concatenate([[error_2], [error_3]], axis=0)
+    #errors = np.concatenate(error_a, error_b, axis=0)
+    errors = np.concatenate([[error_0],[error_1],[error_2],[error_3]], axis=0)
+
+    return model, errors, cum_kin, cum_act
+
+def moveCycling(model, listenAt, sendAt, timestep=0.5, attempt_length=30, num_cycles=7):
+    attempt_kin = findKin_func(attempt_length=attempt_length, num_cycles=num_cycles, timestep=timestep)
+    estAttemptAct, updated_kin = estimate_act_fun(model=model, desired_kin=attempt_kin, timestep=timestep)
+
+    [real_attempt_kin, real_attempt_act] = run_act_func(estAttemptAct, listenAt=listenAt, sendAt=sendAt, model_ver=0, timestep=int(np.round(timestep*1000)))
+
+    return real_attempt_kin, real_attempt_act
+
+###### One layer down #######
+
+def systemID_input_gen_func(signal_dur_in_sec, pass_chance, max_in, min_in, timestep):
+    #variable definitions
+    num_samples = int(np.round(signal_dur_in_sec/timestep))
+    samples = np.linspace(0, signal_dur_in_sec, num_samples)
+    gen_input = np.zeros(num_samples,)*min_in
+
+    for ijk in range(1, num_samples):
+        rand_pass = np.random.uniform(0,1,1)
+        if rand_pass < pass_chance:
+            gen_input[ijk] = ((max_in-min_in)*np.random.uniform(0,1,1))+min_in
+        else:
+            gen_input[ijk] = gen_input[ijk-1]
+        
+    return gen_input
+
+def kin_act_show_func(vs_time=False, timestep=0.005, **kwargs):
+    sample_n_kin = 0
+    sample_n_act = 0
+
+    if("kinematics" in kwargs):
+        kinematics = kwargs["kinematics"]
+        sample_n_kin = kinematics.shape[0]
+    if("activations" in kwargs):
+        activations = kwargs['activations']
+        sample_n_act = activations.shape[0]
+    if not (("kinematics" in kwargs) or ("activations" in kwargs)):
+        raise NameError("Please pass in either kinematics or activations")
+    if (sample_n_kin != 0) and (sample_n_act != 0) and (sample_n_kin != sample_n_act):
+        raise ValueError("Kinematics and activations lengths must be equivalent")
+    else:
+        num_samples = np.max([sample_n_kin, sample_n_act])
+        if vs_time:
+            x = np.linspace(0, timestep*num_samples, num_samples)
+        else:
+            x = range(num_samples)
+    if ("kinematics" in kwargs):
+        plt.figure()
+        plt.subplot(6, 1, 1)
+        plt.plot(x, kinematics[:,0])
+        plt.ylabel('q0 (rads)')
+        plt.subplot(6, 1, 2)
+        plt.plot(x, kinematics[:,1])
+        plt.ylabel('q0 dot (rads/s)')
+        plt.subplot(6, 1, 3)
+        plt.plot(x, kinematics[:,2])
+        plt.ylabel('q0 double dot (rads/s^2)')
+        plt.subplot(6, 1, 4)
+        plt.plot(x, kinematics[:,3])
+        plt.ylabel('q1 (rads)')
+        plt.subplot(6, 1, 5)
+        plt.plot(x, kinematics[:,4])
+        plt.ylabel('q1 dot (rads/s)')
+        plt.subplot(6, 1, 6)
+        plt.plot(x, kinematics[:,5])
+        plt.ylabel('q1 double dot (rads/s^2)')
+        plt.xlabel('motor 1 activation values')
+    if ("activations" in kwargs):
+        plt.figure()
+        plt.subplot(3, 1, 1)
+        plt.plot(x, activations[:,0])
+        plt.ylabel('motor 1 activation values')
+        plt.subplot(3, 1, 2)
+        plt.plot(x, activations[:,1])
+        plt.ylabel('motor 1 activation values')
+        plt.subplot(3, 1, 3)
+        plt.plot(x, activations[:,2])
+        plt.ylabel('motor 1 activation values')
+        plt.xlabel('Sample #')
+        plt.show(block=True) 
+
+def run_act_func(activations, listenAt, sendAt, model_ver=0, timestep=1000):
+    #define variables
+    num_task_samples = activations.shape[0]
+    real_attempt_excurs = np.zeros((num_task_samples, 4)) #one for each tendon we are measuring the excursion of
+    real_attempt_act = np.zeros((num_task_samples, 4))
+    
+    #connect to RTB
+    sof = rtb.BridgeSetup(sendAt, listenAt, rtb.setups.hand_4_4)
+    sof.startConnection()
+
+    #loop through activations and keep track of excursions to calculate velocity and acceloration
+    for ijk in range(num_task_samples):
+        postureExcursions = []
+        adjusted_act = adjust_act_func(activations[ijk])
+        real_attempt_act[ijk,:] = adjusted_act #activations[ijk]
+
+        #a = (((100+45)*np.random.uniform(0,1,1))-45)[0]
+        #b =(((100+45)*np.random.uniform(0,1,1))-45)[0]
+        #c=(((100+45)*np.random.uniform(0,1,1))-45)[0]
+        #degreeSet = [a, b, c]
+        
+        degreeSet = sof.sendAndReceive(adjusted_act, timestep)
+        #print(degreeSet)
+        for p in range(len(degreeSet)):
+            degreeSet[p] = np.round(degrees2excurs(degreeSet[p], 6), 4)
+        real_attempt_excurs[ijk,:] = np.array(degreeSet)
+
+    #kill connection to RTB
+    zeroSet = np.zeros(activations.shape[1])
+    _ = sof.sendAndReceive(zeroSet, 2)
+	#in python this happens automatically
+
+    #convert from excursions to kinematics
+    real_attempt_kin = excurs2kin_func(real_attempt_excurs[:,0], real_attempt_excurs[:,1], real_attempt_excurs[:,2], real_attempt_excurs[:,3], timestep = timestep)
+
+    return real_attempt_kin, real_attempt_act
+
+def findKin_func(attempt_length=10, num_cycles=7, timestep=1):
+    num_attempt_samples = int(np.round(attempt_length/timestep))
+
+    q0 = np.zeros(num_attempt_samples)
+    q1 = np.zeros(num_attempt_samples)
+    q2 = np.zeros(num_attempt_samples)
+
+    for ijk in range(num_attempt_samples):
+        q0[ijk] = (np.pi/4) * np.sin(num_cycles*(2*np.pi*ijk/num_attempt_samples))
+        q1[ijk] = -1*(np.pi/2)*((0.5*np.cos(num_cycles*(2*np.pi*ijk/num_attempt_samples))-0.5))
+        q2[ijk] = -1*(np.pi/2)*((0.5*np.cos(num_cycles*(2*np.pi*ijk/num_attempt_samples))-0.5))
+    
+    attempt_kin = angle2endpoint(q0, q1, q2)
+
+    return attempt_kin
+
+def estimate_act_fun(model, desired_kin, timestep=1):
+    link = 'C:/Users/quest/Documents/Classes/Research/liveFinger/softFinger/3_5cmModel_E2E.h5'
+    endp2kin = keras.models.load_model(link)
+
+    updated_kin = endp2kin.predict(desired_kin)
+    updated_kin = excurs2kin_func(updated_kin[:,0], updated_kin[:,1], updated_kin[:,2], updated_kin[:,3], timestep=timestep)
+    est_act = model.predict(updated_kin)
+
+    return est_act, updated_kin
+
+def concat_data_func(cum_kin, cum_act, kin, act, throw_percentage=0.2):
+    size_incoming_data = kin.shape[0]
+    samples_to_throw = int(np.round(throw_percentage*size_incoming_data))
+    cum_kin = np.concatenate([cum_kin, kin[samples_to_throw:,:]])
+    cum_act = np.concatenate([cum_act, act[samples_to_throw:,:]])
+    return cum_kin, cum_act
+
+def error_calc_func(input1, input2):
+    error = np.mean(np.abs(input1-input2))
+    return error
+
+
+###### Another Layer down ######
+
+#TODO: check if this will work as intended
+
+def excurs2kin_func(t0, t1, t2, t3, timestep=1000):
+    kinematics = np.transpose(np.concatenate((
+	[[t0], [np.gradient(t0)/timestep], [np.gradient(np.gradient(t0)/timestep)/timestep], 
+	[t1], [np.gradient(t1)/timestep], [np.gradient(np.gradient(t1)/timestep)/timestep], 
+	[t2], [np.gradient(t2)/timestep], [np.gradient(np.gradient(t2)/timestep)/timestep], 
+	[t3], [np.gradient(t3)/timestep], [np.gradient(np.gradient(t3)/timestep)/timestep]]), axis=0))
+    return kinematics
+
+def degrees2excurs(degrees, diameterInMM=6):
+	return (np.pi*diameterInMM)*(degrees/360)
+
+def adjust_act_func(activations):
+    adjust_act = []
+    adjustment = 0.5
+    max_index = np.where(activations == max(activations))
+    for i in range(len(activations)):
+        if i == max_index:
+            adjust_act.append(activations[i])
+        else:
+            adjust_act.append(adjustment*activations[i])
+    return np.array(adjust_act)
+
+def angle2endpoint(q0, q1, q2, l1=36, l2=36, l3=36):
+    xy = np.zeros((q0.shape[0],2))
+
+    for ijk in range(q0.shape[0]):
+        xy[ijk][0] = (l1*np.cos(q0[ijk]))+(l2*np.cos(q0[ijk]+q1[ijk]))+(l3*np.cos(q0[ijk]+q1[ijk]+q2[ijk]))
+        xy[ijk][1] = (l1*np.cos(q0[ijk]))+(l2*np.cos(q0[ijk]+q1[ijk]))+(l3*np.cos(q0[ijk]+q1[ijk]+q2[ijk]))
+    return xy
