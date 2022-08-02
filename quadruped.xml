@@ -1,0 +1,270 @@
+<mujoco model="8-link 12-muscle quadruped">
+    <option timestep="0.01" iterations="50" solver="Newton" tolerance="1e10"/>
+    <size njmax="100" nconmax="20" nstack="2000"/>
+
+     <visual>
+        <rgba haze=".3 .3 .3 1"/>
+    </visual>
+
+    <default>
+        <joint type="hinge" pos="0 0 0" axis="0 1 0" limited="true" damping="0" frictionloss="10"/>
+        <muscle ctrllimited="true" ctrlrange="0 1" scale="1000" />
+    </default>
+
+    <asset>
+        <texture type="skybox" builtin="gradient" rgb1="0.6 0.6 0.6" rgb2="0 0 0" width="512" height="512" />
+        <texture name="texplane" type="2d" builtin="checker" rgb1=".25 .25 .25" rgb2=".3 .3 .3" width="512" height="512" mark="cross" markrgb=".8 .8 .8"/>
+        <material name="matplane" reflectance="0.3" texture="texplane" texrepeat="1 1" texuniform="true" />
+    </asset>
+
+     <worldbody>
+        <!--Lighting and plane-->
+        <geom name="floor" pos="0 0 -0.5" size="0 0 1" type="plane" material="matplane"/>
+        <light directional="true" diffuse=".8 .8 .8" specular=".2 .2 .2" pos="0 0 5" dir="0 1 -5" />
+
+        <!--Joints-->
+        <site name="S_J0_0" pos="-0.15 0 1.2" size="0.02" rgba="0.7 0.8 0.95 0.1" group="1" />
+        <site name="S_J0_1" pos="0.15 0 1.2" size="0.02" rgba="0.7 0.8 0.95 0.1" group="1" />
+
+        <site name="S_J2_0" pos="-0.15 0.5 1.2" size="0.02" rgba="0.7 0.8 0.95 0.1" group="1" />
+        <site name="S_J2_1" pos="0.15 0.5 1.2" size="0.02" rgba="0.7 0.8 0.95 0.1" group="1" />
+
+        <site name="S_J4_0" pos="-1.85 0 0" size="0.02" rgba="0.7 0.8 0.95 0.1" group="1" />
+        <site name="S_J4_1" pos="-2.15 0 0" size="0.02" rgba="0.7 0.8 0.95 0.1" group="1" />
+
+        <site name="S_J6_0" pos="-1.85 0.5 0" size="0.02" rgba="0.7 0.8 0.95 0.1" group="1" />
+        <site name="S_J6_1" pos="-2.15 0.5 0" size="0.02" rgba="0.7 0.8 0.95 0.1" group="1" />
+
+        <!--Muscles-->
+        <site name="S_M0" pos="0.4 0 1.5" size="0.02"/>
+        <site name="S_M1" pos="0.4 0 1.8" size="0.02"/>
+        <site name="S_M2" pos="-0.4 0 1.5" size="0.02"/>
+
+        <site name="S_M3" pos="0.4 1.1 1.5" size="0.02"/>
+        <site name="S_M4" pos="0.4 1.1 1.8" size="0.02"/>
+        <site name="S_M5" pos="-0.4 1.1 1.5" size="0.02"/>
+
+        <site name="S_M7" pos="-2.4 0 1.5" size="0.02"/>
+        <site name="S_M6" pos="-2.4 0 1.8" size="0.02"/>
+        <site name="S_M8" pos="-1.6 0 1.5" size="0.02"/>
+
+        <site name="S_M10" pos="-2.4 1.1 1.5" size="0.02"/>
+        <site name="S_M9" pos="-2.4 1.1 1.8" size="0.02"/>
+        <site name="S_M11" pos="-1.6 1.1 1.5" size="0.02"/>
+
+        <!--Define body-->
+        <body pos="0 0 1.2">
+            <joint name="J0" range="-90 70"/>
+            <geom name="J0" type="cylinder" pos="0 0 0" zaxis="0 1 0" size=".1 .05" rgba="1 1 1 .5" mass="0" />
+            <geom name="L0" type="capsule" size="0.045" fromto="0 0 0  0 0 -.5" rgba=".7 .7 .7 1"/>
+            <!--then there is a site here, I am figuring out what it does-->
+            <!--it looks like they are the pass-by connection sites-->
+            <site name="S_L0_0" pos="-.05 0 -.1" size="0.02"/>
+            <site name="S_L0_1" pos=".05 0 -.1" size="0.02"/>
+            <site name="S_L0_2" pos="-.1 0 -.25" size="0.02"/>
+            <site name="S_L0_3" pos="0 0 -.25" size="0.02"/>
+            <!--I think this is the endpoint because it isn't referenced elsewhere-->
+            <site name="S_L0_4" pos=".1 0 -.25" size="0.02"/>
+
+            <body pos="0 0 -.5">
+                <joint name="J1" range="-90 0"/>
+                <geom name="J1" type="cylinder" pos="0 0 0" zaxis="0 1 0" size=".1 .05" rgba="1 1 1 .5" mass="0"/>
+                <geom name="L1" type="capsule" size="0.045" fromto="0 0 0  0 0 -0.5" rgba=".7 .7 .7 1"/>
+                <geom name="Endpoint_0" type="sphere" pos="0 0 -0.5" size=".05" rgba=".9 .9 .9 .7"/>
+                <!--Link-->
+                <site name="S_L1_0" pos="-0.05 0 -.1" size="0.02" />
+                <site name="S_L1_1" pos="0.05 0 -.1" size="0.02" />
+                <!--Joint-->
+                <site name="S_J1_0" pos="-0.15 0 0" size="0.02" rgba=".7 .8 .95 .1" group="1"/>
+                <site name="S_J1_1" pos="0.15 0 0" size="0.02" rgba=".7 .8 .95 .1" group="1"/>
+            </body>
+        </body>
+        <body pos="0 1.1 1.2">
+            <joint name="J2" range="-90 70"/>
+            <geom name="J2" type="cylinder" pos="0 0 0" zaxis="0 1 0" size=".1 .05" rgba="1 1 1 .5" mass="0" />
+            <geom name="L2" type="capsule" size="0.045" fromto="0 0 0  0 0 -.5" rgba=".7 .7 .7 1"/>
+            <!--then there is a site here, I am figuring out what it does-->
+            <!--it looks like they are the pass-by connection sites-->
+            <site name="S_L2_0" pos="-.05 0 -.1" size="0.02"/>
+            <site name="S_L2_1" pos=".05 0 -.1" size="0.02"/>
+            <site name="S_L2_2" pos="-.1 0 -.25" size="0.02"/>
+            <site name="S_L2_3" pos="0 0 -.25" size="0.02"/>
+            <!--I think this is the endpoint because it isn't referenced elsewhere-->
+            <site name="S_L2_4" pos=".1 0 -.25" size="0.02"/>
+
+            <body pos="0 0 -.5">
+                <joint name="J3" range="-90 0"/>
+                <geom name="J3" type="cylinder" pos="0 0 0" zaxis="0 1 0" size=".1 .05" rgba="1 1 1 .5" mass="0"/>
+                <geom name="L3" type="capsule" size="0.045" fromto="0 0 0  0 0 -0.5" rgba=".7 .7 .7 1"/>
+                <geom name="Endpoint_1" type="sphere" pos="0 0 -0.5" size=".05" rgba=".9 .9 .9 .7"/>
+                <!--Link-->
+                <site name="S_L3_0" pos="-0.05 0 -.1" size="0.02" />
+                <site name="S_L3_1" pos="0.05 0 -.1" size="0.02" />
+                <!--Joint-->
+                <site name="S_J3_0" pos="-0.15 0 0" size="0.02" rgba=".7 .8 .95 .1" group="1"/>
+                <site name="S_J3_1" pos="0.15 0 0" size="0.02" rgba=".7 .8 .95 .1" group="1"/>
+            </body>
+        </body>
+
+        <body pos="-2 0 1.2">
+            <joint name="J4" range="-70 90"/>
+            <geom name="J4" type="cylinder" pos="0 0 0" zaxis="0 1 0" size=".1 .05" rgba="1 1 1 .5" mass="0" />
+            <geom name="L4" type="capsule" size="0.045" fromto="0 0 0  0 0 -.5" rgba=".7 .7 .7 1"/>
+            <!--then there is a site here, I am figuring out what it does-->
+            <!--it looks like they are the pass-by connection sites-->
+            <site name="S_L4_0" pos="-.05 0 -.1" size="0.02"/>
+            <site name="S_L4_1" pos=".05 0 -.1" size="0.02"/>
+            <site name="S_L4_2" pos="-.1 0 -.25" size="0.02"/>
+            <site name="S_L4_3" pos="0 0 -.25" size="0.02"/>
+            <!--I think this is the endpoint because it isn't referenced elsewhere-->
+            <site name="S_L4_4" pos=".1 0 -.25" size="0.02"/>
+
+            <body pos="0 0 -.5">
+                <joint name="J5" range="-20 100"/>
+                <geom name="J5" type="cylinder" pos="0 0 0" zaxis="0 1 0" size=".1 .05" rgba="1 1 1 .5" mass="0"/>
+                <geom name="L5" type="capsule" size="0.045" fromto="0 0 0  0 0 -0.5" rgba=".7 .7 .7 1"/>
+                <geom name="Endpoint_2" type="sphere" pos="0 0 -0.5" size=".05" rgba=".9 .9 .9 .7"/>
+                <!--Link-->
+                <site name="S_L5_0" pos="-0.05 0 -.1" size="0.02" />
+                <site name="S_L5_1" pos="0.05 0 -.1" size="0.02" />
+                <!--Joint-->
+                <site name="S_J5_0" pos="-0.15 0 0" size="0.02" rgba=".7 .8 .95 .1" group="1"/>
+                <site name="S_J5_1" pos="0.15 0 0" size="0.02" rgba=".7 .8 .95 .1" group="1"/>
+            </body>
+        </body>
+        <!--
+        <body pos="-2 1.1 1.2">
+            <joint name="J6" range="-70 90"/>
+            <geom name="J6" type="cylinder" pos="0 0 0" zaxis="0 1 0" size=".1 .05" rgba="1 1 1 .5" mass="0" />
+            <geom name="L6" type="capsule" size="0.045" fromto="0 0 0  0 0 -.5" rgba=".7 .7 .7 1"/>
+            <site name="S_L6_0" pos="-.05 0 -.1" size="0.02"/>
+            <site name="S_L6_1" pos=".05 0 -.1" size="0.02"/>
+            <site name="S_L6_2" pos="-.1 0 -.25" size="0.02"/>
+            <site name="S_L6_3" pos="0 0 -.25" size="0.02"/>
+            <site name="S_L6_4" pos=".1 0 -.25" size="0.02"/>
+
+            <body pos="0 0 -.5">
+                <joint name="J7" range="-20 100"/>
+                <geom name="J7" type="cylinder" pos="0 0 0" zaxis="0 1 0" size=".1 .05" rgba="1 1 1 .5" mass="0"/>
+                <geom name="L7" type="capsule" size="0.045" fromto="0 0 0  0 0 -0.5" rgba=".7 .7 .7 1"/>
+                <geom name="Endpoint_3" type="sphere" pos="0 0 -0.5" size=".05" rgba=".9 .9 .9 .7"/>
+                <site name="S_L7_0" pos="-0.05 0 -.1" size="0.02" />
+                <site name="S_L7_1" pos="0.05 0 -.1" size="0.02" />
+                <site name="S_J7_0" pos="-0.15 0 0" size="0.02" rgba=".7 .8 .95 .1" group="1"/>
+                <site name="S_J7_1" pos="0.15 0 0" size="0.02" rgba=".7 .8 .95 .1" group="1"/>
+            </body>
+        </body>
+    -->
+        
+    </worldbody>
+
+    <tendon>
+        <spatial name="T_M0" width="0.01" rgba=".55 .78 .55 1">
+            <site site="S_M0"/>
+            <geom geom="J0" sidesite="S_J0_1"/>
+            <site site="S_L0_1"/>
+        </spatial>
+
+        <spatial name="T_M1" width="0.01" rgba=".95 .5 .47 1">
+            <site site="S_M1"/>
+            <geom geom="J0" sidesite="S_J0_0"/>
+            <site site="S_L0_3"/>
+            <geom geom="J1" sidesite="S_J1_1"/>
+            <site site="S_L1_1"/>
+        </spatial>
+
+        <spatial name="T_M2" width="0.01" rgba=".45 .49 .83 1">
+            <site site="S_M2"/>
+            <geom geom="J0" sidesite="S_J0_0"/>
+            <site site="S_L0_0"/>
+            <geom geom="J1" sidesite="S_J1_0"/>
+            <site site="S_L1_0"/>
+        </spatial>
+
+        <spatial name="T_M3" width="0.01" rgba=".55 .78 .55 1">
+            <site site="S_M3"/>
+            <geom geom="J2" sidesite="S_J2_1"/>
+            <site site="S_L2_1"/>
+        </spatial>
+
+        <spatial name="T_M4" width="0.01" rgba=".95 .5 .47 1">
+            <site site="S_M4"/>
+            <geom geom="J2" sidesite="S_J2_0"/>
+            <site site="S_L2_3"/>
+            <geom geom="J3" sidesite="S_J3_1"/>
+            <site site="S_L3_1"/>
+        </spatial>
+
+        <spatial name="T_M5" width="0.01" rgba=".45 .49 .83 1">
+            <site site="S_M5"/>
+            <geom geom="J2" sidesite="S_J2_0"/>
+            <site site="S_L2_0"/>
+            <geom geom="J3" sidesite="S_J3_0"/>
+            <site site="S_L3_0"/>
+        </spatial> 
+        
+        <spatial name="T_M6" width="0.01" rgba=".55 .78 .55 1">
+            <site site="S_M6"/>
+            <geom geom="J4" sidesite="S_J4_1"/>
+            <site site="S_L4_1"/>
+        </spatial>
+
+        <spatial name="T_M7" width="0.01" rgba=".95 .5 .47 1">
+            <site site="S_M7"/>
+            <geom geom="J4" sidesite="S_J4_0"/>
+            <site site="S_L4_3"/>
+            <geom geom="J5" sidesite="S_J5_1"/>
+            <site site="S_L5_1"/>
+        </spatial>
+
+        <spatial name="T_M8" width="0.01" rgba=".45 .49 .83 1">
+            <site site="S_M8"/>
+            <geom geom="J4" sidesite="S_J4_0"/>
+            <site site="S_L4_0"/>
+            <geom geom="J5" sidesite="S_J5_0"/>
+            <site site="S_L5_0"/>
+        </spatial>
+
+        <!--
+        <spatial name="T_M9" width="0.01" rgba=".55 .78 .55 1">
+            <site site="S_M9"/>
+            <geom geom="J6" sidesite="S_J6_1"/>
+            <site site="S_L6_1"/>
+        </spatial>
+
+        <spatial name="T_M10" width="0.01" rgba=".95 .5 .47 1">
+            <site site="S_M10"/>
+            <geom geom="J6" sidesite="S_J6_0"/>
+            <site site="S_L6_3"/>
+            <geom geom="J7" sidesite="S_J7_1"/>
+            <site site="S_L7_1"/>
+        </spatial>
+
+        <spatial name="T_M11" width="0.01" rgba=".45 .49 .83 1">
+            <site site="S_M11"/>
+            <geom geom="J6" sidesite="S_J6_0"/>
+            <site site="S_L6_0"/>
+            <geom geom="J7" sidesite="S_J7_0"/>
+            <site site="S_L7_0"/>
+        </spatial> 
+    -->
+    </tendon>
+
+    <actuator>
+        <muscle name="T_M0" tendon="T_M0"/>
+        <muscle name="T_M1" tendon="T_M1"/>
+        <muscle name="T_M2" tendon="T_M2"/>
+        <muscle name="T_M3" tendon="T_M3"/>
+        <muscle name="T_M4" tendon="T_M4"/>
+        <muscle name="T_M5" tendon="T_M5"/>
+        <muscle name="T_M6" tendon="T_M6"/>
+        <muscle name="T_M7" tendon="T_M7"/>
+        <muscle name="T_M8" tendon="T_M8"/>
+        <!--
+        <muscle name="T_M9" tendon="T_M9"/>
+        <muscle name="T_M10" tendon="T_M10"/>
+        <muscle name="T_M11" tendon="T_M11"/>
+        -->
+    </actuator>
+    
+</mujoco>
