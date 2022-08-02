@@ -1,2 +1,2 @@
-# Mujoco-Models
-A collection of mujoco model xml files that I can reference as I see fit
+# lab_work
+A small repository where I can keep track of my initial implementations before moving to production code
